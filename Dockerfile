@@ -1,0 +1,28 @@
+# ---- build stage: compile native deps (better-sqlite3) ----
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+
+# Toolchain needed by node-gyp to build better-sqlite3.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json ./
+RUN npm install --omit=dev
+
+# ---- runtime stage: slim image with prebuilt node_modules ----
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=build /app/node_modules ./node_modules
+COPY package.json ./
+COPY src ./src
+
+# Data (SQLite db) lives here; mount a volume to persist it.
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
+EXPOSE 7447
+
+CMD ["node", "src/index.js"]

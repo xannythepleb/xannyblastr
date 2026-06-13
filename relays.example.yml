@@ -1,0 +1,10 @@
+# Manually managed blast relays for xannyblastr.
+# Copy this file to relays.yml, then edit freely (one wss:// or ws:// URL per line).
+# Apply changes with `blastr relays sync` (no restart) or by restarting the relay.
+# Harvested (NIP-10050) relays are managed automatically and do NOT appear here.
+relays:
+  - wss://relay.damus.io
+  - wss://nos.lol
+  - wss://relay.primal.net
+  - wss://freelay.sovbit.host
+  - wss://relay.ditto.pub

@@ -1,0 +1,24 @@
+services:
+  blastr:
+    build: .
+    container_name: xannyblastr
+    restart: unless-stopped
+    ports:
+      # host:container — change the host port if 7447 is taken.
+      - "0.0.0.0:7447:7447"
+    volumes:
+      # Mounted read-write so the CLI can update them. These files MUST exist on the
+      # host before `up` (copy the .example files), or Docker will create directories.
+      - ./config.json:/app/config.json
+      - ./relays.yml:/app/relays.yml
+      # persist the SQLite database (events, relays, log, meta).
+      - ./data:/app/data
+    # The relay must listen on 0.0.0.0 inside the container (default in config).
+    # Put a TLS-terminating reverse proxy (Caddy/nginx) in front for wss://.
+
+# Usage:
+#   cp config.example.json config.json && cp relays.example.yml relays.yml
+#   docker compose up -d --build
+#   docker compose exec blastr node src/cli.js relays add wss://relay.example.com
+#   docker compose exec blastr node src/cli.js relays sync     # after bulk-editing relays.yml
+#   docker compose exec blastr node src/cli.js status
