@@ -17,10 +17,10 @@ function main() {
 
   console.log('========================================');
   console.log(' xannyblastr');
-  console.log(` admin: ${cfg.adminHex}`);
-  console.log(` blastr npub: ${cfg.relayNpub || 'NONE (relaySecretKey not configured)'}`);
+  console.log(` admin: ${cfg.adminNpub} (${cfg.adminHex})`);
+  console.log(` blastr npub: ${cfg.relayNpub ? `${cfg.relayNpub} (${cfg.relayPubkeyHex})` : 'NONE (relaySecretKey not configured)'}`);
   console.log(` accepts kinds: ${cfg.allowedKinds.join(', ')}`);
-  console.log(` WoT depth: ${cfg.wotDepth}  refresh: every ${cfg.wotRefreshHours}h`);
+  console.log(` WoT depth: ${cfg.wotDepth}  refresh: every ${cfg.wotRefreshHours}h  (10050 sweep depth: ${cfg.harvest10050From === 'admin' ? 'admin-only' : cfg.dmRelaySweepDepth})`);
   console.log(` downstream auth key: ${cfg.secretKey ? 'configured' : 'NONE (auth-required relays will fail)'}`);
   console.log(` outbound relay limit: ${describeOutboundLimit(cfg)}`);
   console.log(

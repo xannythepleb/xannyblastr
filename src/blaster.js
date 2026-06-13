@@ -36,8 +36,13 @@ export function harvestRelaysFrom10050(event, cfg, { fromAdmin }) {
   if (cfg.harvest10050From === 'admin' && !fromAdmin) return [];
   const added = [];
   for (const url of relayTagsFrom10050(event)) {
-    if (addRelay(url, '10050')) added.push(url);
+    if (addRelay(url, '10050')) {
+      added.push(url);
+      // Emit one line per relay the moment it's learned, so it surfaces in
+      // `docker logs -f` immediately rather than only as an end-of-batch summary.
+      console.log(`[harvest] discovered new blast relay (10050): ${url}`);
+    }
   }
-  if (added.length) console.log(`[harvest] learned ${added.length} relay(s) from 10050:`, added);
+  if (added.length) console.log(`[harvest] learned ${added.length} new relay(s) from 10050 (event ${event.id.slice(0, 8)}…)`);
   return added;
 }

@@ -1,7 +1,7 @@
 {
   "name": "xannyblastr",
-  "version": "1.0.2-beta",
-  "description": "A DM-only Nostr blast relay: accepts NIP-59 gift-wrapped DMs (kind 1059) and NIP-17 DM relay lists (kind 10050) from your web of trust, then forwards them to a list of downstream relays with health tracking.",
+  "version": "1.0.3-beta",
+  "description": "A DM only Nostr blast relay: accepts NIP-59 gift-wrapped DMs (kind 1059) and NIP-17 DM relay lists (kind 10050) from your web of trust, then forwards them to a list of downstream relays with health tracking.",
   "type": "module",
   "main": "src/index.js",
   "bin": {

@@ -72,6 +72,7 @@ export function loadConfig() {
   }
 
   const adminHex = toHexPubkey(clean.adminNpub);
+  const adminNpub = nip19.npubEncode(adminHex);
   const secretKey = toSecretKeyBytes(clean.relaySecretKey);
   const relayPubkeyHex = secretKey ? getPublicKey(secretKey) : null;
   const relayNpub = relayPubkeyHex ? nip19.npubEncode(relayPubkeyHex) : null;
@@ -94,6 +95,7 @@ export function loadConfig() {
     name: clean.name || 'xannyblastr',
     description: clean.description || '',
     adminHex,
+    adminNpub,
     secretKey,
     relayPubkeyHex,
     relayNpub,
@@ -107,6 +109,7 @@ export function loadConfig() {
     outboundConnectIntervalMs: clean.outboundConnectIntervalMs ?? 250,
     outboundConnectPerRelayIntervalMs: clean.outboundConnectPerRelayIntervalMs ?? 1000,
     harvest10050From: clean.harvest10050From || 'all',
+    dmRelaySweepDepth: clean.dmRelaySweepDepth ?? 1,
     livenessIntervalHours: clean.livenessIntervalHours ?? 6,
     logRetentionMs,
     logRetentionLabel: String(logRetentionLabel),

@@ -78,6 +78,7 @@ const SCHEMA = {
   adminNpub:   { type: 'string', validate: vPubkey, desc: 'Admin npub or hex pubkey' },
   relaySecretKey: { type: 'string', validate: vSeckey, desc: 'Relay nsec or hex secret key' },
   harvest10050From: { type: 'enum', values: ['all', 'admin'], desc: 'Harvest relays from all WoT writers, or admin only' },
+  dmRelaySweepDepth: { type: 'int', min: 1, max: 2, desc: '10050 DM-relay sweep depth (1 = direct follows, 2 = + follows-of-follows)' },
   wotDepth:    { type: 'int', min: 1, max: 2, desc: 'Web of trust depth (1 or 2)' },
   wotRefreshHours: { type: 'number', min: 0.1, desc: 'How often to rebuild the WoT (hours)' },
   maxWotSize:  { type: 'int', min: 1, desc: 'Cap on WoT size' },
@@ -220,9 +221,9 @@ function configValidate() {
     const cfg = loadConfig();
     ok('config is valid');
     console.log(`  name            : ${cfg.name}`);
-    console.log(`  admin (hex)     : ${cfg.adminHex}`);
+    console.log(`  admin           : ${npubHex(cfg.adminNpub, cfg.adminHex)}`);
     console.log(`  downstream key  : ${cfg.secretKey ? 'set' : 'NOT set'}`);
-    console.log(`  blastr npub     : ${cfg.relayNpub || 'NOT set'}`);
+    console.log(`  blastr npub     : ${npubHex(cfg.relayNpub, cfg.relayPubkeyHex)}`);
     console.log(`  outbound limit  : ${cfg.outboundConnectConcurrency} concurrent, ${cfg.outboundConnectIntervalMs}ms global gap, ${cfg.outboundConnectPerRelayIntervalMs}ms per relay`);
     console.log(`  discovery relays: ${cfg.discoveryRelays.length}`);
     console.log(`  relays file     : ${cfg.relaysFile}`);
@@ -290,6 +291,7 @@ function humanizeMs(ms) {
   return p.join(' ');
 }
 const sourceLabel = (src) => (src === 'manual' ? 'manual (permanent)' : 'learned (10050)');
+const npubHex = (npub, hex) => (npub && hex ? `${npub} (${hex})` : 'NOT set');
 
 function relaysList() {
   withDb(() => {
@@ -360,7 +362,8 @@ function showStatus() {
     console.log('-------------------');
     console.log(`version           : ${VERSION}`);
     console.log(`relay name        : ${cfg.name}`);
-    console.log(`blastr npub       : ${cfg.relayNpub || 'NOT set'}`);
+    console.log(`admin             : ${npubHex(cfg.adminNpub, cfg.adminHex)}`);
+    console.log(`blastr npub       : ${npubHex(cfg.relayNpub, cfg.relayPubkeyHex)}`);
     console.log(`outbound limit    : ${cfg.outboundConnectConcurrency} concurrent, ${cfg.outboundConnectIntervalMs}ms global gap, ${cfg.outboundConnectPerRelayIntervalMs}ms per relay`);
     console.log(`send relays       : ${relays.length} (${manual} manual, ${relays.length - manual} learned)`);
     console.log(`relays file       : ${cfg.relaysFile}`);

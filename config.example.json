@@ -29,6 +29,8 @@
   "outboundConnectPerRelayIntervalMs": 1000,
   "// 10050 harvesting": "'all' = learn relays from any authorized writer's 10050. 'admin' = only from the admin's own 10050.",
   "harvest10050From": "all",
+  "// dmRelaySweepDepth": "On each WoT refresh, proactively pull kind-10050 DM relay lists and harvest their relays. 1 = admin + direct follows, 2 = + follows-of-follows. Ignored (admin-only) when harvest10050From is 'admin'.",
+  "dmRelaySweepDepth": 1,
   "// health / retention settings": "----",
   "livenessIntervalHours": 6,
   "blastTimeoutMs": 8000,
