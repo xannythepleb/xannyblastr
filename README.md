@@ -20,7 +20,7 @@ It is designed for individuals or small communities who want a personal DM "outb
 - [Access control & security model](#access-control--security-model)
 - [Project structure](#project-structure)
 - [Limitations & caveats](#limitations--caveats)
-- [License](#license)
+- [Roadmap](#roadmap)
 
 ---
 
