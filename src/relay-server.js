@@ -117,6 +117,14 @@ function handleReq(ws, state, msg, cfg) {
   const filters = msg.slice(2);
   if (typeof subId !== 'string') return;
 
+  // NIP-01 REQ filters must be objects. Reject obviously malformed
+  // subscriptions before storing them, otherwise broadcast() may later try
+  // to match events against junk filter values.
+  if (!filters.length || !filters.every(isPlainObject)) {
+    ws.send(JSON.stringify(['CLOSED', subId, 'invalid: REQ must include one or more filter objects']));
+    return;
+  }
+
   // Private reads: must be authed; you only get 1059s addressed to you.
   let restrictToPubkey = null;
   if (cfg.privateReads) {
@@ -127,17 +135,38 @@ function handleReq(ws, state, msg, cfg) {
     if (state.authedPubkey !== cfg.adminHex) restrictToPubkey = state.authedPubkey;
   }
 
-  state.subs.set(subId, { filters, restrictToPubkey });
+  try {
+    const seen = new Set();
+    const events = [];
 
-  const seen = new Set();
-  for (const filter of filters) {
-    for (const ev of queryEvents(filter, { restrictToPubkey })) {
-      if (seen.has(ev.id)) continue;
-      seen.add(ev.id);
+    for (const filter of filters) {
+      for (const ev of queryEvents(filter, { restrictToPubkey })) {
+        if (seen.has(ev.id)) continue;
+        seen.add(ev.id);
+        events.push(ev);
+      }
+    }
+
+    // Only keep the live subscription after the initial DB query succeeds.
+    // That prevents a bad filter from remaining in state.subs and crashing
+    // later during broadcast().
+    state.subs.set(subId, { filters, restrictToPubkey });
+
+    for (const ev of events) {
       ws.send(JSON.stringify(['EVENT', subId, ev]));
     }
+    ws.send(JSON.stringify(['EOSE', subId]));
+  } catch (e) {
+    state.subs.delete(subId);
+    console.error('[relay] REQ error', e);
+    try {
+      ws.send(JSON.stringify(['CLOSED', subId, 'error: failed to process REQ']));
+    } catch {}
   }
-  ws.send(JSON.stringify(['EOSE', subId]));
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Push a newly accepted event to any matching open subscription. */
