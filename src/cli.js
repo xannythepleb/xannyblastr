@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import fs from 'node:fs';
 import { nip19 } from 'nostr-tools';
 import {

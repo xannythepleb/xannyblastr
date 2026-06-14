@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.js';
 import { initDb } from './db.js';
@@ -5,6 +6,17 @@ import { reconcileManualRelays } from './relays-store.js';
 import { startRelayServer } from './relay-server.js';
 import { startSchedulers } from './scheduler.js';
 import { describeOutboundLimit } from './outbound-limiter.js';
+
+// Read the package version. Guarded so a missing/garbled package.json only affects the version display.
+function readVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    return pkg.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+const VERSION = readVersion();
 
 function main() {
   const cfg = loadConfig();
@@ -16,7 +28,7 @@ function main() {
   const { added, removed, total } = reconcileManualRelays(cfg);
 
   console.log('========================================');
-  console.log(' xannyblastr');
+  console.log(` xannyblastr v${VERSION}`);
   console.log(` admin: ${cfg.adminNpub} (${cfg.adminHex})`);
   console.log(` blastr npub: ${cfg.relayNpub ? `${cfg.relayNpub} (${cfg.relayPubkeyHex})` : 'NONE (relaySecretKey not configured)'}`);
   console.log(` accepts kinds: ${cfg.allowedKinds.join(', ')}`);
