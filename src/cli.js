@@ -340,14 +340,25 @@ function relaysRanked(order, n) {
 // every harvested relay (recording reachable + unreachable), then show the
 // leaderboard so you can confirm it worked.
 async function relaysRefresh(n) {
-  await withDb(async (cfg) => {
-    console.log('Refreshing relays — rebuilding web of trust, harvesting kind-10050 DM');
-    console.log('relays, then probing. This can take a minute on a large follow graph.\n');
-    await refreshWot(cfg); // WoT rebuild + proactive 10050 harvest
-    await checkLiveness(cfg); // probe harvested relays; logs reachable + unreachable
-    console.log('\nTop relays by success rate:');
-    printRanked('best', n || 5);
-  });
+  // The outbound connection limiter deliberately uses unref()'d timers so the
+  // long-running relay server can shut down cleanly. In this one-shot CLI path
+  // there is no HTTP listener keeping the process alive, so Node can otherwise
+  // exit while refreshWot()/checkLiveness() are waiting for a limiter timer.
+  // Hold one normal ref'd handle open only for the duration of this command.
+  const keepAlive = setInterval(() => {}, 60_000);
+
+  try {
+    await withDb(async (cfg) => {
+      console.log('Refreshing relays — rebuilding web of trust, harvesting kind-10050 DM');
+      console.log('relays, then probing. This can take a minute on a large follow graph.\n');
+      await refreshWot(cfg); // WoT rebuild + proactive 10050 harvest
+      await checkLiveness(cfg); // probe harvested relays; logs reachable + unreachable
+      console.log('\nTop relays by success rate:');
+      printRanked('best', n || 5);
+    });
+  } finally {
+    clearInterval(keepAlive);
+  }
 }
 function relaysRate() {
   withDb(() => {
