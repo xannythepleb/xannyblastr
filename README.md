@@ -1,5 +1,7 @@
 # xannyblastr
 
+<img width="1023" height="920" alt="image" src="https://github.com/user-attachments/assets/9f47869f-b9d9-4392-9877-9acf9bfd15d8" />
+
 **A private, DM only Nostr relay that blasts gift wrapped direct messages to a fan-out of downstream relays, restricted to an operator's web of trust.**
 
 `xannyblastr` is a specialised [Nostr](https://github.com/nostr-protocol/nostr) relay with a narrow job: accept encrypted direct messages from a trusted set of people and rebroadcast them to many other relays, improving the odds that a DM actually reaches its recipient. It deliberately refuses to be a general purpose relay — it stores and forwards direct messages and nothing else.
