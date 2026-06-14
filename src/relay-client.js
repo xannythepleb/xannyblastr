@@ -1,147 +1,105 @@
-import WebSocket from 'ws';
-import { buildAuthEvent } from './nostr.js';
-import { withOutboundConnectLimit } from './outbound-limiter.js';
+import { probe } from './relay-client.js';
+import {
+  getSendRelays,
+  logRelayAttempt,
+  relayFailureStats,
+  removeRelay,
+  wipeRelayLog,
+  setMeta,
+} from './db.js';
+import { isExcludedRelayUrl } from './config.js';
+
+// A harvested relay must have at least this many recorded attempts before it's
+// eligible for purge, so a tiny sample (e.g. one transient timeout) can't evict
+// an otherwise-good relay on a 100% failure rate.
+const MIN_ATTEMPTS_BEFORE_PURGE = 3;
 
 /**
- * Publish an event to a downstream relay.
- * Handles NIP-42: if the relay challenges us, we AUTH with our relay key (if set)
- * and resend the event once.
- *
- * Returns { ok, reason }.
- *   ok = true  -> connected AND relay accepted the write (OK, true). This is "success".
- *   ok = false -> could not connect, timed out, or write was rejected.
+ * Remove HARVESTED relays that are un-routable from this server (.onion when not
+ * allowed, .local, localhost/loopback, link-local). Manual ('manual') relays are
+ * left alone — an admin's explicit choice is respected. Run once at startup so
+ * pre-existing junk is cleared immediately on deploy.
  */
-export function publishEvent(url, event, opts = {}) {
-  return withOutboundConnectLimit(url, opts, () => publishEventNow(url, event, opts));
-}
-
-function publishEventNow(url, event, { secretKey, timeoutMs = 8000 } = {}) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let resent = false;
-    const finish = (ok, reason) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try { ws.close(); } catch {}
-      resolve({ ok, reason });
-    };
-
-    const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
-
-    let ws;
-    try {
-      ws = new WebSocket(url, { handshakeTimeout: timeoutMs });
-    } catch (e) {
-      return finish(false, `connect-error: ${e.message}`);
+export function pruneUnroutableRelays(cfg) {
+  const allowOnion = cfg.allowOnionRelays;
+  let removed = 0;
+  for (const { url } of getSendRelays().filter((r) => r.source === '10050')) {
+    if (isExcludedRelayUrl(url, { allowOnion })) {
+      removeRelay(url);
+      removed++;
     }
-
-    ws.on('open', () => ws.send(JSON.stringify(['EVENT', event])));
-
-    ws.on('message', (data) => {
-      let msg;
-      try { msg = JSON.parse(data.toString()); } catch { return; }
-      const [type] = msg;
-
-      if (type === 'OK' && msg[1] === event.id) {
-        const accepted = msg[2] === true;
-        finish(accepted, accepted ? 'accepted' : `rejected: ${msg[3] || 'no reason'}`);
-      } else if (type === 'AUTH') {
-        const challenge = msg[1];
-        const authEv = buildAuthEvent(secretKey, url, challenge);
-        if (!authEv) {
-          finish(false, 'auth-required: no relay key configured');
-          return;
-        }
-        ws.send(JSON.stringify(['AUTH', authEv]));
-        if (!resent) {
-          resent = true;
-          ws.send(JSON.stringify(['EVENT', event])); // resend after auth
-        }
-      } else if (type === 'NOTICE') {
-        // informational only
-      }
-    });
-
-    ws.on('error', (e) => finish(false, `connect-error: ${e.message}`));
-    ws.on('close', () => finish(false, 'closed-before-ok'));
-  });
+  }
+  if (removed) {
+    console.log(`[health] pruned ${removed} un-routable harvested relay(s) (.onion/.local/loopback)`);
+  }
 }
 
 /**
- * Fetch events matching filters from a downstream relay (used for WoT building).
- * Resolves with the collected events on EOSE or timeout.
+ * Active liveness check for harvested relays. A probe records reachability both
+ * ways: reachable -> success, unreachable -> failure. This feeds the "cannot
+ * reach" half of the purge rule and gives `blastr relays best/rate` real data.
+ * (Reachability is not the same as write-acceptance, but it's the strongest
+ * signal we have without actually publishing; genuine write rejections still get
+ * logged as failures during real blasts.)
  */
-export function fetchEvents(url, filters, opts = {}) {
-  return withOutboundConnectLimit(url, opts, () => fetchEventsNow(url, filters, opts));
-}
+export async function checkLiveness(cfg) {
+  const allowOnion = cfg.allowOnionRelays;
+  const harvested = getSendRelays().filter(
+    (r) => r.source === '10050' && !isExcludedRelayUrl(r.url, { allowOnion })
+  );
+  if (harvested.length === 0) return;
+  console.log(`[health] probing ${harvested.length} harvested relay(s)…`);
 
-function fetchEventsNow(url, filters, { secretKey, timeoutMs = 8000 } = {}) {
-  return new Promise((resolve) => {
-    const subId = 'wot' + Math.random().toString(36).slice(2, 8);
-    const collected = [];
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try { ws.close(); } catch {}
-      resolve(collected);
-    };
-    const timer = setTimeout(finish, timeoutMs);
-
-    let ws;
-    try {
-      ws = new WebSocket(url, { handshakeTimeout: timeoutMs });
-    } catch {
-      return finish();
-    }
-
-    ws.on('open', () => ws.send(JSON.stringify(['REQ', subId, ...filters])));
-
-    ws.on('message', (data) => {
-      let msg;
-      try { msg = JSON.parse(data.toString()); } catch { return; }
-      const [type] = msg;
-      if (type === 'EVENT' && msg[1] === subId) {
-        collected.push(msg[2]);
-      } else if (type === 'EOSE' && msg[1] === subId) {
-        finish();
-      } else if (type === 'AUTH' && secretKey) {
-        const authEv = buildAuthEvent(secretKey, url, msg[1]);
-        if (authEv) ws.send(JSON.stringify(['AUTH', authEv]));
+  let reachableCount = 0;
+  await Promise.all(
+    harvested.map(async ({ url }) => {
+      const { reachable, reason } = await probe(url, {
+        timeoutMs: cfg.probeTimeoutMs,
+        outboundConnectConcurrency: cfg.outboundConnectConcurrency,
+        outboundConnectIntervalMs: cfg.outboundConnectIntervalMs,
+        outboundConnectPerRelayIntervalMs: cfg.outboundConnectPerRelayIntervalMs,
+      });
+      if (reachable) {
+        reachableCount++;
+        logRelayAttempt(url, true, 'probe: reachable');
+      } else {
+        logRelayAttempt(url, false, `unreachable: ${reason}`);
+        console.log(`[health] ${url} unreachable (${reason})`);
       }
-    });
-
-    ws.on('error', finish);
-    ws.on('close', finish);
-  });
+    })
+  );
+  console.log(
+    `[health] probe complete: ${reachableCount} reachable, ` +
+      `${harvested.length - reachableCount} unreachable (of ${harvested.length})`
+  );
 }
 
-/** Lightweight reachability probe. Resolves { reachable, reason }. */
-export function probe(url, opts = {}) {
-  return withOutboundConnectLimit(url, opts, () => probeNow(url, opts));
-}
+/**
+ * Retention job. For each HARVESTED relay, compute its failure rate from the log.
+ * Purge any that we cannot reach OR that reject our writes >= 50% of the time.
+ * Admin-configured ('manual') relays are never auto-purged.
+ * Afterwards, wipe the entire log so it never survives more than one retention
+ * window (configurable via `logRetention`, default 7d), and record the wipe time.
+ */
+export function purgeAndWipe(cfg) {
+  const harvested = new Set(getSendRelays().filter((r) => r.source === '10050').map((r) => r.url));
+  const stats = relayFailureStats();
+  let purged = 0;
 
-function probeNow(url, { timeoutMs = 6000 } = {}) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (reachable, reason) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try { ws.close(); } catch {}
-      resolve({ reachable, reason });
-    };
-    const timer = setTimeout(() => finish(false, 'timeout'), timeoutMs);
-
-    let ws;
-    try {
-      ws = new WebSocket(url, { handshakeTimeout: timeoutMs });
-    } catch (e) {
-      return finish(false, `connect-error: ${e.message}`);
+  for (const { url, attempts, failures } of stats) {
+    if (!harvested.has(url)) continue; // only purge learned relays
+    if (attempts < MIN_ATTEMPTS_BEFORE_PURGE) continue; // not enough signal yet
+    const failureRate = failures / attempts;
+    if (failureRate >= 0.5) {
+      removeRelay(url);
+      purged++;
+      console.log(
+        `[purge] removed ${url} — ${failures}/${attempts} attempts failed (${(failureRate * 100).toFixed(0)}%)`
+      );
     }
-    ws.on('open', () => finish(true, 'reachable'));
-    ws.on('error', (e) => finish(false, `connect-error: ${e.message}`));
-  });
+  }
+
+  wipeRelayLog();
+  setMeta('last_wipe_at', Math.floor(Date.now() / 1000));
+  console.log(`[purge] retention job complete: ${purged} relay(s) removed; health log wiped.`);
 }

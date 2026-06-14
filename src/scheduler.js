@@ -1,5 +1,5 @@
 import { refreshWot } from './wot.js';
-import { checkLiveness, purgeAndWipe } from './relay-health.js';
+import { checkLiveness, purgeAndWipe, pruneUnroutableRelays, purgeUnhealthyRelays } from './relay-health.js';
 import { getMeta, setMeta } from './db.js';
 
 // setTimeout can't safely hold delays beyond ~24.8 days, and we want to tolerate
@@ -12,36 +12,57 @@ export function nextWipeMs(cfg) {
 }
 
 export function startSchedulers(cfg) {
+  // One-time cleanup: drop any previously-harvested un-routable relays so they
+  // stop being blasted to / probed (new ones are filtered at harvest time).
+  try {
+    pruneUnroutableRelays(cfg);
+  } catch (e) {
+    console.error('[health] startup prune failed', e);
+  }
+
   // Web of trust: refresh now, then on an interval.
   refreshWot(cfg).catch((e) => console.error('[wot] initial refresh failed', e));
   setInterval(() => {
     refreshWot(cfg).catch((e) => console.error('[wot] refresh failed', e));
   }, cfg.wotRefreshHours * 3600 * 1000);
 
-  // Liveness probes for harvested relays.
+  // Liveness probes, then purge unhealthy harvested relays. This is dynamic
+  // relay management — always on, independent of any log-wipe schedule.
   setInterval(() => {
-    checkLiveness(cfg).catch((e) => console.error('[health] liveness failed', e));
+    checkLiveness(cfg)
+      .then(() => {
+        try {
+          purgeUnhealthyRelays();
+        } catch (e) {
+          console.error('[purge] failed', e);
+        }
+      })
+      .catch((e) => console.error('[health] liveness failed', e));
   }, cfg.livenessIntervalHours * 3600 * 1000);
 
-  // Retention: ensure we have a baseline wipe time, then schedule.
-  if (!getMeta('last_wipe_at')) setMeta('last_wipe_at', Math.floor(Date.now() / 1000));
-  scheduleRetention(cfg);
-  console.log(
-    `[sched] log retention: ${cfg.logRetentionLabel} ` +
-      `(next wipe ~ ${new Date(nextWipeMs(cfg)).toISOString()})`
-  );
+  // Log wipe is OPTIONAL and OFF by default: logs (and relay success-rate history)
+  // are retained indefinitely. Set `logRetention` (e.g. 30d) to enable bounding.
+  if (cfg.logRetentionMs > 0) {
+    if (!getMeta('last_wipe_at')) setMeta('last_wipe_at', Math.floor(Date.now() / 1000));
+    scheduleWipe(cfg);
+    console.log(
+      `[sched] log wipe: every ${cfg.logRetentionLabel} (next ~ ${new Date(nextWipeMs(cfg)).toISOString()})`
+    );
+  } else {
+    console.log('[sched] log wipe: disabled (logs retained indefinitely; set logRetention to enable)');
+  }
 }
 
-function scheduleRetention(cfg) {
+function scheduleWipe(cfg) {
   const delay = nextWipeMs(cfg) - Date.now();
   if (delay <= 0) {
     try {
-      purgeAndWipe(cfg); // updates last_wipe_at
+      purgeAndWipe(); // updates last_wipe_at
     } catch (e) {
       console.error('[purge] failed', e);
       setMeta('last_wipe_at', Math.floor(Date.now() / 1000)); // avoid a tight loop on error
     }
-    return scheduleRetention(cfg);
+    return scheduleWipe(cfg);
   }
-  setTimeout(() => scheduleRetention(cfg), Math.min(delay, MAX_CHUNK_MS)).unref?.();
+  setTimeout(() => scheduleWipe(cfg), Math.min(delay, MAX_CHUNK_MS)).unref?.();
 }

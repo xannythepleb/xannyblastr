@@ -85,8 +85,14 @@ export function loadConfig() {
   const relaysFileRaw = clean.relaysFile || './relays.yml';
   const relaysFile = path.isAbsolute(relaysFileRaw) ? relaysFileRaw : path.join(ROOT, relaysFileRaw);
 
-  const logRetentionLabel = clean.logRetention ?? '7d';
-  const logRetentionMs = parseDuration(logRetentionLabel, 7 * 86400 * 1000);
+  // Periodic log wiping is OFF by default so relay success-rate history is kept
+  // indefinitely. Set logRetention (e.g. '30d') to re-enable it. 'off'/'never'/0
+  // (and the default) disable it -> logRetentionMs === 0.
+  const rawRetention = clean.logRetention ?? 'off';
+  const wipeOff =
+    rawRetention === 'off' || rawRetention === 'never' || rawRetention === 0 || rawRetention === '0';
+  const logRetentionLabel = wipeOff ? 'off' : String(rawRetention);
+  const logRetentionMs = wipeOff ? 0 : parseDuration(rawRetention, 7 * 86400 * 1000);
 
   return {
     host: clean.host || '0.0.0.0',
@@ -110,6 +116,7 @@ export function loadConfig() {
     outboundConnectPerRelayIntervalMs: clean.outboundConnectPerRelayIntervalMs ?? 1000,
     harvest10050From: clean.harvest10050From || 'all',
     dmRelaySweepDepth: clean.dmRelaySweepDepth ?? 1,
+    allowOnionRelays: clean.allowOnionRelays ?? false,
     livenessIntervalHours: clean.livenessIntervalHours ?? 6,
     logRetentionMs,
     logRetentionLabel: String(logRetentionLabel),
@@ -129,6 +136,30 @@ export function normalizeUrl(url) {
   } catch {
     return String(url).trim().toLowerCase().replace(/\/$/, '');
   }
+}
+
+/**
+ * Should this relay URL be excluded as un-routable from this server?
+ *   - .onion        -> excluded unless allowOnion (e.g. running behind Tor)
+ *   - .local / mDNS, localhost, loopback, link-local -> always excluded
+ *   - unparseable   -> excluded
+ * Private LAN ranges (10/172.16/192.168) are intentionally NOT excluded — a
+ * self-hoster may legitimately blast to a relay on the same network.
+ */
+export function isExcludedRelayUrl(url, { allowOnion = false } = {}) {
+  let host;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1); // strip IPv6 brackets
+
+  if (host.endsWith('.onion')) return !allowOnion;
+  if (host === 'localhost' || host.endsWith('.local')) return true;
+  if (host === '::1' || /^127\./.test(host)) return true; // loopback
+  if (/^169\.254\./.test(host) || host.startsWith('fe80:')) return true; // link-local
+  return false;
 }
 
 function dedupeUrls(arr) {
