@@ -110,23 +110,23 @@ export function queryEvents(filter, { restrictToPubkey = null, hardLimit = 1000 
   const params = [];
 
   if (filter.ids?.length) {
-    where.push(`id IN (${filter.ids.map(() => '?').join(',')})`);
+    where.push(`e.id IN (${filter.ids.map(() => '?').join(',')})`);
     params.push(...filter.ids);
   }
   if (filter.authors?.length) {
-    where.push(`pubkey IN (${filter.authors.map(() => '?').join(',')})`);
+    where.push(`e.pubkey IN (${filter.authors.map(() => '?').join(',')})`);
     params.push(...filter.authors);
   }
   if (filter.kinds?.length) {
-    where.push(`kind IN (${filter.kinds.map(() => '?').join(',')})`);
+    where.push(`e.kind IN (${filter.kinds.map(() => '?').join(',')})`);
     params.push(...filter.kinds);
   }
   if (typeof filter.since === 'number') {
-    where.push('created_at >= ?');
+    where.push('e.created_at >= ?');
     params.push(filter.since);
   }
   if (typeof filter.until === 'number') {
-    where.push('created_at <= ?');
+    where.push('e.created_at <= ?');
     params.push(filter.until);
   }
 
