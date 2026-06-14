@@ -201,7 +201,12 @@ export function upsertRelay(url, source) {
 }
 
 export function removeRelay(url) {
-  db.prepare('DELETE FROM relays WHERE url = ?').run(normalizeUrl(url));
+  const n = normalizeUrl(url);
+  db.prepare('DELETE FROM relays WHERE url = ?').run(n);
+  // Also drop this relay's health log. Without a periodic wipe these rows would
+  // otherwise accumulate forever, and a re-harvested relay would inherit stale
+  // failures and be re-purged immediately.
+  db.prepare('DELETE FROM relay_log WHERE url = ?').run(n);
 }
 
 // ---------- contacted ----------

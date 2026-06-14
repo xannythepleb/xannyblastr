@@ -1,6 +1,7 @@
 import { publishEvent } from './relay-client.js';
 import { getSendRelays, logRelayAttempt, addRelay } from './db.js';
 import { relayTagsFrom10050 } from './nostr.js';
+import { isExcludedRelayUrl } from './config.js';
 
 /**
  * Blast a kind-1059 gift wrap to every relay in the send list.
@@ -36,6 +37,7 @@ export function harvestRelaysFrom10050(event, cfg, { fromAdmin }) {
   if (cfg.harvest10050From === 'admin' && !fromAdmin) return [];
   const added = [];
   for (const url of relayTagsFrom10050(event)) {
+    if (isExcludedRelayUrl(url, { allowOnion: cfg.allowOnionRelays })) continue;
     if (addRelay(url, '10050')) {
       added.push(url);
       // Emit one line per relay the moment it's learned, so it surfaces in

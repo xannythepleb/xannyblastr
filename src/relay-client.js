@@ -1,6 +1,21 @@
 import WebSocket from 'ws';
+import fs from 'node:fs';
 import { buildAuthEvent } from './nostr.js';
 import { withOutboundConnectLimit } from './outbound-limiter.js';
+
+// Identifies this client to downstream relays in the WebSocket handshake, e.g.
+// "xannyblastr/1.0.1-beta". (The 'ws' client sends no User-Agent by default.)
+// Guarded so a missing/garbled package.json degrades to a bare name rather than
+// breaking outbound connections.
+function buildUserAgent() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    return pkg.version ? `xannyblastr/${pkg.version}` : 'xannyblastr';
+  } catch {
+    return 'xannyblastr';
+  }
+}
+const USER_AGENT = buildUserAgent();
 
 /**
  * Publish an event to a downstream relay.
@@ -31,7 +46,7 @@ function publishEventNow(url, event, { secretKey, timeoutMs = 8000 } = {}) {
 
     let ws;
     try {
-      ws = new WebSocket(url, { handshakeTimeout: timeoutMs });
+      ws = new WebSocket(url, { handshakeTimeout: timeoutMs, headers: { 'User-Agent': USER_AGENT } });
     } catch (e) {
       return finish(false, `connect-error: ${e.message}`);
     }
@@ -92,7 +107,7 @@ function fetchEventsNow(url, filters, { secretKey, timeoutMs = 8000 } = {}) {
 
     let ws;
     try {
-      ws = new WebSocket(url, { handshakeTimeout: timeoutMs });
+      ws = new WebSocket(url, { handshakeTimeout: timeoutMs, headers: { 'User-Agent': USER_AGENT } });
     } catch {
       return finish();
     }
@@ -137,7 +152,7 @@ function probeNow(url, { timeoutMs = 6000 } = {}) {
 
     let ws;
     try {
-      ws = new WebSocket(url, { handshakeTimeout: timeoutMs });
+      ws = new WebSocket(url, { handshakeTimeout: timeoutMs, headers: { 'User-Agent': USER_AGENT } });
     } catch (e) {
       return finish(false, `connect-error: ${e.message}`);
     }

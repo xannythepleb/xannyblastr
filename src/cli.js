@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import fs from 'node:fs';
 import { nip19 } from 'nostr-tools';
 import {
@@ -11,6 +10,8 @@ import {
 } from './config.js';
 import { initDb, getSendRelays, getRelayStats, getLastOutcomes, getMeta } from './db.js';
 import { nextWipeMs } from './scheduler.js';
+import { refreshWot } from './wot.js';
+import { checkLiveness } from './relay-health.js';
 import {
   addManualRelay,
   removeManualRelay,
@@ -79,6 +80,7 @@ const SCHEMA = {
   relaySecretKey: { type: 'string', validate: vSeckey, desc: 'Relay nsec or hex secret key' },
   harvest10050From: { type: 'enum', values: ['all', 'admin'], desc: 'Harvest relays from all WoT writers, or admin only' },
   dmRelaySweepDepth: { type: 'int', min: 1, max: 2, desc: '10050 DM-relay sweep depth (1 = direct follows, 2 = + follows-of-follows)' },
+  allowOnionRelays: { type: 'bool', desc: 'Allow harvesting/probing .onion relays (only useful if routing via Tor)' },
   wotDepth:    { type: 'int', min: 1, max: 2, desc: 'Web of trust depth (1 or 2)' },
   wotRefreshHours: { type: 'number', min: 0.1, desc: 'How often to rebuild the WoT (hours)' },
   maxWotSize:  { type: 'int', min: 1, desc: 'Cap on WoT size' },
@@ -87,7 +89,7 @@ const SCHEMA = {
   outboundConnectIntervalMs: { type: 'int', min: 0, desc: 'Minimum delay between outbound relay connection starts globally (ms)' },
   outboundConnectPerRelayIntervalMs: { type: 'int', min: 0, desc: 'Minimum delay between outbound connection starts to the same relay (ms)' },
   livenessIntervalHours: { type: 'number', min: 0.1, desc: 'Liveness probe interval (hours)' },
-  logRetention: { type: 'duration', desc: 'Log lifetime before purge+wipe, e.g. 7d / 12h / 1w' },
+  logRetention: { type: 'duration', desc: "Health-log lifetime before purge+wipe. 'off' (default) keeps logs forever; e.g. 7d / 12h / 1w to enable" },
   blastTimeoutMs: { type: 'int', min: 100, desc: 'Blast attempt timeout (ms)' },
   probeTimeoutMs: { type: 'int', min: 100, desc: 'Liveness probe timeout (ms)' },
   privateReads: { type: 'bool', desc: 'Require auth to read; only see your own DMs' },
@@ -114,7 +116,12 @@ function coerce(schema, rawValue) {
     case 'enum':
       if (!schema.values.includes(rawValue)) throw new Error(`must be one of: ${schema.values.join(', ')}`);
       return rawValue;
-    case 'duration': parseDuration(rawValue); return rawValue;
+    case 'duration': {
+      const v = String(rawValue).trim().toLowerCase();
+      if (v === 'off' || v === 'never' || v === '0') return v; // disable keywords
+      parseDuration(rawValue); // throws if not a valid duration
+      return rawValue;
+    }
     case 'bool': {
       const l = rawValue.toLowerCase();
       if (TRUE.has(l)) return true;
@@ -311,19 +318,46 @@ function relaysRecent(n) {
     })));
   });
 }
+function printRanked(order, n) {
+  const limit = Number(n) || 10;
+  const stats = getRelayStats().filter((s) => s.attempts > 0);
+  if (!stats.length) return console.log('No usage logged yet — nothing to rank.');
+  stats.sort((a, b) =>
+    order === 'best' ? b.rate - a.rate || b.attempts - a.attempts
+                     : a.rate - b.rate || b.attempts - a.attempts);
+  console.table(stats.slice(0, limit).map((s) => ({
+    relay: s.url, 'success rate': fmtRate(s.rate),
+    successes: s.successes, failures: s.failures, attempts: s.attempts,
+  })));
+}
 function relaysRanked(order, n) {
-  withDb(() => {
-    const limit = Number(n) || 10;
-    const stats = getRelayStats().filter((s) => s.attempts > 0);
-    if (!stats.length) return console.log('No usage logged yet — nothing to rank.');
-    stats.sort((a, b) =>
-      order === 'best' ? b.rate - a.rate || b.attempts - a.attempts
-                       : a.rate - b.rate || b.attempts - a.attempts);
-    console.table(stats.slice(0, limit).map((s) => ({
-      relay: s.url, 'success rate': fmtRate(s.rate),
-      successes: s.successes, failures: s.failures, attempts: s.attempts,
-    })));
-  });
+  withDb(() => printRanked(order, n));
+}
+
+// Run the full discovery + probe cycle on demand (the same path that runs
+// nightly): rebuild the web of trust, harvest new kind-10050 DM relays, probe
+// every harvested relay (recording reachable + unreachable), then show the
+// leaderboard so you can confirm it worked.
+async function relaysRefresh(n) {
+  // The outbound connection limiter deliberately uses unref()'d timers so the
+  // long-running relay server can shut down cleanly. In this one-shot CLI path
+  // there is no HTTP listener keeping the process alive, so Node can otherwise
+  // exit while refreshWot()/checkLiveness() are waiting for a limiter timer.
+  // Hold one normal ref'd handle open only for the duration of this command.
+  const keepAlive = setInterval(() => {}, 60_000);
+
+  try {
+    await withDb(async (cfg) => {
+      console.log('Refreshing relays — rebuilding web of trust, harvesting kind-10050 DM');
+      console.log('relays, then probing. This can take a minute on a large follow graph.\n');
+      await refreshWot(cfg); // WoT rebuild + proactive 10050 harvest
+      await checkLiveness(cfg); // probe harvested relays; logs reachable + unreachable
+      console.log('\nTop relays by success rate:');
+      printRanked('best', n || 5);
+    });
+  } finally {
+    clearInterval(keepAlive);
+  }
 }
 function relaysRate() {
   withDb(() => {
@@ -353,9 +387,7 @@ function relaysRate() {
 }
 function showStatus() {
   withDb((cfg) => {
-    const lastWipe = Number(getMeta('last_wipe_at') || 0);
-    const started = lastWipe > 0;
-    const next = nextWipeMs(cfg);
+    const wipeEnabled = cfg.logRetentionMs > 0;
     const relays = getSendRelays();
     const manual = relays.filter((r) => r.source === 'manual').length;
     console.log('xannyblastr status');
@@ -367,14 +399,25 @@ function showStatus() {
     console.log(`outbound limit    : ${cfg.outboundConnectConcurrency} concurrent, ${cfg.outboundConnectIntervalMs}ms global gap, ${cfg.outboundConnectPerRelayIntervalMs}ms per relay`);
     console.log(`send relays       : ${relays.length} (${manual} manual, ${relays.length - manual} learned)`);
     console.log(`relays file       : ${cfg.relaysFile}`);
-    console.log(`log retention     : ${cfg.logRetentionLabel}`);
-    console.log(`last log wipe     : ${started ? fmtTime(lastWipe) : 'never (not started yet)'}`);
-    console.log(`next log wipe     : ${started ? fmtTime(Math.floor(next / 1000)) : 'not scheduled (relay not started yet)'}`);
-    console.log(`time until wipe   : ${started ? humanizeMs(next - Date.now()) : '—'}`);
+    if (wipeEnabled) {
+      const lastWipe = Number(getMeta('last_wipe_at') || 0);
+      const started = lastWipe > 0;
+      const next = nextWipeMs(cfg);
+      console.log(`log wipe          : every ${cfg.logRetentionLabel}`);
+      console.log(`last log wipe     : ${started ? fmtTime(lastWipe) : 'never (not started yet)'}`);
+      console.log(`next log wipe     : ${started ? fmtTime(Math.floor(next / 1000)) : 'not scheduled (relay not started yet)'}`);
+      console.log(`time until wipe   : ${started ? humanizeMs(next - Date.now()) : '—'}`);
+    } else {
+      console.log(`log wipe          : off (logs kept indefinitely)`);
+    }
   });
 }
 function showNextWipe() {
   withDb((cfg) => {
+    if (cfg.logRetentionMs <= 0) {
+      console.log('Log wipe is disabled — logs are retained indefinitely. Set logRetention (e.g. `blastr config set logRetention 30d`) to enable.');
+      return;
+    }
     const next = nextWipeMs(cfg);
     console.log(`Next log wipe in ${humanizeMs(next - Date.now())} (at ${fmtTime(Math.floor(next / 1000))}).`);
   });
@@ -392,6 +435,7 @@ Manual blast relays (stored in the DB + relays.yml; changes apply live, no resta
   blastr relays best  [n]                  highest success rate
   blastr relays worst [n]                  lowest success rate
   blastr relays rate                       success rate for every relay
+  blastr relays refresh [n]                run discovery + probe now, then show best [n] (default 5)
 
 Config (config.json settings; validated; restart relay to apply):
   blastr config set <key> <value>          e.g. config set logRetention 14d
@@ -441,6 +485,8 @@ try {
         case 'best': relaysRanked('best', rest[1]); break;
         case 'worst': relaysRanked('worst', rest[1]); break;
         case 'rate': relaysRate(); break;
+        case 'refresh':
+        case 'update': relaysRefresh(rest[1]).catch((e) => die(`error: ${e.message}`)); break;
         default: help();
       }
       break;

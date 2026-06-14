@@ -6,5 +6,5 @@ relays:
   - wss://relay.damus.io
   - wss://nos.lol
   - wss://relay.primal.net
-  - wss://freelay.sovbit.host
+  - wss://nostr.mom
   - wss://relay.ditto.pub

@@ -1,6 +1,7 @@
 import { fetchEvents } from './relay-client.js';
 import { replaceWot, wotSize, addRelay } from './db.js';
 import { relayTagsFrom10050, isValidEvent } from './nostr.js';
+import { isExcludedRelayUrl } from './config.js';
 
 /** Pull the newest kind-3 contact list for `pubkey` across discovery relays. */
 async function fetchLatestContactList(pubkey, cfg) {
@@ -119,6 +120,7 @@ export async function harvestDmRelaysFromWot(cfg, degree1, degree2) {
   const added = [];
   for (const ev of newest.values()) {
     for (const url of relayTagsFrom10050(ev)) {
+      if (isExcludedRelayUrl(url, { allowOnion: cfg.allowOnionRelays })) continue;
       if (addRelay(url, '10050')) {
         added.push(url);
         console.log(`[harvest] discovered new blast relay (10050): ${url}`);
