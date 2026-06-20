@@ -18,13 +18,23 @@ services:
       # persist the SQLite database (events, relays, log, meta) in a Docker volume
       # as of 1.0.5-beta this is no longer bound to a local host folder
       # to avoid permissions issues now that we run as node instead of root
-      - xannyblastr-data:/app/data
+      - xannyblastr-db:/app/data
     # The relay must listen on 0.0.0.0 inside the container (default in config).
     # Put a TLS-terminating reverse proxy (Caddy/nginx) in front for wss://.
 
+  migrate-data:
+     image: ghcr.io/xannythepleb/xannyblastr:latest
+      build: .
+      profiles:
+        - migrate
+      volumes:
+        - ./data:/app/legacy-data:ro
+        - xannyblastr-db:/app/data
+      command: ["node", "src/migrate.js"]
+
 # your database goes here
 volumes:
-  xannyblastr-data:
+  xannyblastr-db:
     name: xannyblastr-db
 
 # Usage:
