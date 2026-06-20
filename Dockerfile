@@ -1,5 +1,5 @@
 # ---- build stage: compile native deps (better-sqlite3) ----
-FROM node:24-trixie-slim AS build
+FROM node:26-trixie-slim AS build
 WORKDIR /app
 
 # Toolchain needed by node-gyp to build better-sqlite3
@@ -11,7 +11,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # ---- runtime stage: slim image with prebuilt node_modules ----
-FROM node:24-trixie-slim AS runtime
+FROM node:26-trixie-slim AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
