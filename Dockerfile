@@ -20,6 +20,17 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node src ./src
 
+# Convenience wrapper for relay commands
+# Lets users run:
+#   docker compose exec blastr relays best
+#   docker compose exec blastr relays add wss://relay.example.com
+#   docker compose exec blastr relays sync
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'exec node /app/src/cli.js relays "$@"' \
+    > /usr/local/bin/relays \
+  && chmod +x /usr/local/bin/relays
+
 # Data (SQLite db) lives here; mount a volume to persist it
 RUN mkdir -p /app/data \
   && chown -R node:node /app/data
