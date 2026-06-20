@@ -13,7 +13,7 @@
     "genkey": "node -e \"import('nostr-tools/pure').then(m=>{const sk=m.generateSecretKey();import('nostr-tools').then(t=>{console.log('nsec:',t.nip19.nsecEncode(sk));console.log('npub:',t.nip19.npubEncode(m.getPublicKey(sk)));console.log('hex sk:',Buffer.from(sk).toString('hex'));});});\""
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.11.1",
     "js-yaml": "^4.1.0",
     "nostr-tools": "^2.10.0",
     "ws": "^8.18.0"
