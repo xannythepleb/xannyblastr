@@ -23,8 +23,7 @@ services:
     # Put a TLS-terminating reverse proxy (Caddy/nginx) in front for wss://.
 
   migrate-data:
-     image: ghcr.io/xannythepleb/xannyblastr:latest
-      build: .
+      image: ghcr.io/xannythepleb/xannyblastr:latest
       profiles:
         - migrate
       volumes:
