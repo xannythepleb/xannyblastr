@@ -4,8 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-      time: "06:00"
+      day: "saturday"
+      time: "04:20"
       timezone: "Europe/London"
     open-pull-requests-limit: 10
     versioning-strategy: increase
@@ -26,6 +26,7 @@ updates:
           - "patch"
     labels:
       - "dependencies"
+      - "python"
 
     # --- Hold back specific dependencies when you need to ---
     # ignore:
