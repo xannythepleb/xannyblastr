@@ -1,0 +1,70 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+
+    # --- Hold back specific dependencies when you need to ---
+    # ignore:
+    #   # Pin a framework you're not ready to migrate: skip all major bumps
+    #   - dependency-name: "some-framework"
+    #     update-types: ["version-update:semver-major"]
+    #   # Or freeze specific version ranges of a package entirely
+    #   - dependency-name: "some-package"
+    #     versions: ["4.x", "5.x"]
+
+    # --- Delay updates so you're not first to hit a bad release ---
+    # cooldown:
+    #   default-days: 7          # applies to everything unless overridden below
+    #   semver-major-days: 14    # wait longer on majors (most likely to break)
+    #   semver-minor-days: 7
+    #   semver-patch-days: 3
+    #   # Optionally scope cooldown to specific packages:
+    #   # include:
+    #   #   - "express"
+    #   # exclude:
+    #   #   - "@types/*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
+    labels:
+      - "dependencies"
+      - "docker"
