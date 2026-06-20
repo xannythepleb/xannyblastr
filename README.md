@@ -113,19 +113,24 @@ The relay listens on a single port (`7447` by default) for both WebSocket traffi
 
 ```bash
 git clone https://github.com/xannythepleb/xannyblastr.git
-cd xannyblaster
+cd xannyblastr
 
 # Both files must exist before the first start, or Docker will create
 # directories in their place.
 cp config.example.json config.json
 cp relays.example.yml relays.yml
 
+# Pull the latest Docker image
+docker compose pull blastr
+
 # Generate a key for the relay to authenticate to downstream relays:
 docker compose run --rm blastr npm run genkey
 
 # Edit config.json (at minimum: adminNpub, relaySecretKey, relayUrl).
-docker compose up -d --build
+docker compose up -d
 docker compose logs -f blastr
+
+# Prepare the helper script so the commands aren't insanely long (more info under Usage)
 ```
 
 ### Manually (Node.js)
@@ -218,15 +223,33 @@ Status:
 
 ```
 
-For Docker Compose, simply add `docker compose exec blastr node src/cli.js` to the beginning of any command.
+For Docker Compose, you need to add `docker compose exec blastr node src/cli.js` to the beginning of any command instead of just `blastr`.
 
 For example:
 
 ```bash
-docker compose exec blastr node src/cli.js blastr relays add
+docker compose exec blastr node src/cli.js status
 ```
 
-Yeah it's a lot just to run a command. Sorry. Working on making that more user friendly.
+You probably cba typing all that out, so I've made a little workaround for you.
+
+In the project directory, run:
+
+```bash
+chmod +x blastr
+```
+
+Now try:
+
+```bash
+./blastr status
+./blastr config validate
+./blastr relays best 10
+./blastr relays add
+```
+
+It should work just the same as a local user's setup would. Just add `./` before it!
+
 
 ### Managing blast relays
 

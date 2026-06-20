@@ -226,7 +226,7 @@ function configKeys() {
 function configValidate() {
   try {
     const cfg = loadConfig();
-    ok('config is valid');
+    console.log('✅ config is valid');
     console.log(`  name            : ${cfg.name}`);
     console.log(`  admin           : ${npubHex(cfg.adminNpub, cfg.adminHex)}`);
     console.log(`  downstream key  : ${cfg.secretKey ? 'set' : 'NOT set'}`);
@@ -236,7 +236,7 @@ function configValidate() {
     console.log(`  relays file     : ${cfg.relaysFile}`);
     console.log(`  log retention   : ${cfg.logRetentionLabel}`);
   } catch (e) {
-    die(`✗ config is INVALID: ${e.message}`);
+    die(`❌ config is INVALID: ${e.message}`);
   }
 }
 function configSetRaw(key, json) {
@@ -424,11 +424,12 @@ function showNextWipe() {
 }
 
 function help() {
-  console.log(`xannyblastr ${VERSION} — admin CLI
+  console.log(`xannyblastr ${VERSION} is running! 🚀
 
-    Enjoying running your own instance?
-    If it's helping your DMs reach their destination,
-    feel free to zap some sats over to xanny@cake.cash
+    Enjoy running your own instance?
+    If it's helping your DMs reach their destination, feel free to zap some sats to say thanks :)
+
+    ⚡ xanny@cake.cash ⚡
 
     Please report any bugs on GitHub:
     https://github.com/xannythepleb/xannyblastr
