@@ -107,7 +107,7 @@ Supported NIPs: **1, 11, 17, 42, 59**.
 
 ## Installation
 
-The relay listens on a single port (`7447` by default) for both WebSocket traffic and the NIP-11 HTTP document (default `7447`). It expects to run behind a TLS-terminating reverse proxy (such as [Caddy](https://caddyserver.com/) or nginx) so clients can reach it over `wss://`.
+The relay listens on a single port (`7447` by default) for both WebSocket traffic and the NIP-11 HTTP document. It expects to run behind a TLS-terminating reverse proxy (such as [Caddy](https://caddyserver.com/) or nginx) so clients can reach it over `wss://`.
 
 ### With Docker Compose (recommended)
 
