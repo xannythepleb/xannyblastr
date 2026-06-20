@@ -14,8 +14,8 @@
 //   - it copies everything from the legacy data directory, including SQLite
 //     sidecar files such as -wal and -shm
 
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
 
 const fsp = fs.promises;
 
