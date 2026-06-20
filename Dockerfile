@@ -8,7 +8,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # ---- runtime stage: slim image with prebuilt node_modules ----
 FROM node:24.17.0-trixie-slim AS runtime
