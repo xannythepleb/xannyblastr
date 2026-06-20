@@ -8,24 +8,6 @@
 
 It is designed for individuals or small communities who want a personal DM "outbox" (and inbox) that is spam-resistant by construction: only the operator, their web of trust, and people the operator has messaged first are allowed to publish.
 
----
-
-## Contents
-
-- [Why this exists](#why-this-exists)
-- [Features](#features)
-- [How it works](#how-it-works)
-- [Tech stack](#tech-stack)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Access control & security model](#access-control--security-model)
-- [Project structure](#project-structure)
-- [Limitations & caveats](#limitations--caveats)
-- [Roadmap](#roadmap)
-
----
-
 ## Why this exists
 
 DMs have always been problematic on Nostr as there are a lot of relays and everyone prefers to use different ones, different clients manage relays differently, and so on. This is an attempt to solve that problem by blasting your DMs onto as many relays as possible to make sure the pleb you're trying to DM actually gets your message.
@@ -120,15 +102,6 @@ Manually managed relays are stored in the SQLite database, so the running relay 
 - On boot, `relays.yml` is reconciled into the database (additions inserted, removals dropped). Harvested relays are left untouched.
 - The CLI updates both the database and `relays.yml`, taking effect immediately on a running relay.
 - For bulk changes, the file can be edited by hand and applied with a single `relays sync` command — no restart required.
-
-## Tech stack
-
-- **Runtime:** [Node.js](https://nodejs.org/) (>= 18), ES modules.
-- **Networking:** [`ws`](https://github.com/websockets/ws) for the WebSocket relay server and for outbound connections to downstream relays; Node's built in HTTP server for the NIP-11 document.
-- **Storage:** [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) (SQLite in WAL mode) for events, the relay list, the web-of-trust cache, and the health log.
-- **Nostr primitives:** [`nostr-tools`](https://github.com/nbd-wtf/nostr-tools) for signature verification, NIP-19 (npub/nsec) encoding, and NIP-42 helpers.
-- **Config files:** [`js-yaml`](https://github.com/nodeca/js-yaml) for the human-editable relay list.
-- **Packaging:** Docker (multi-stage build) and Docker Compose.
 
 Supported NIPs: **1, 11, 17, 42, 59**.
 
@@ -337,6 +310,15 @@ src/
   scheduler.js      Periodic jobs (WoT refresh, liveness, retention)
   cli.js            Operator command-line interface
 ```
+
+## Tech stack
+
+- **Runtime:** [Node.js](https://nodejs.org/) (>= 18), ES modules.
+- **Networking:** [`ws`](https://github.com/websockets/ws) for the WebSocket relay server and for outbound connections to downstream relays; Node's built in HTTP server for the NIP-11 document.
+- **Storage:** [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) (SQLite in WAL mode) for events, the relay list, the web-of-trust cache, and the health log.
+- **Nostr primitives:** [`nostr-tools`](https://github.com/nbd-wtf/nostr-tools) for signature verification, NIP-19 (npub/nsec) encoding, and NIP-42 helpers.
+- **Config files:** [`js-yaml`](https://github.com/nodeca/js-yaml) for the human-editable relay list.
+- **Packaging:** Docker (multi-stage build) and Docker Compose.
 
 ## Limitations & caveats
 
