@@ -1,5 +1,5 @@
 # ---- build stage: compile native deps (better-sqlite3) ----
-FROM node:22-bookworm-slim AS build
+FROM node:22-trixie-slim AS build
 WORKDIR /app
 
 # Toolchain needed by node-gyp to build better-sqlite3.
@@ -11,7 +11,7 @@ COPY package.json ./
 RUN npm install --omit=dev
 
 # ---- runtime stage: slim image with prebuilt node_modules ----
-FROM node:22-bookworm-slim AS runtime
+FROM node:22-trixie-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -26,3 +26,6 @@ VOLUME ["/app/data"]
 EXPOSE 7447
 
 CMD ["node", "src/index.js"]
+
+LABEL org.opencontainers.image.description="A Nostr relay blaster specifically for gift wrapped DMs within your WoT"
+LABEL org.opencontainers.image.source=https://github.com/xannythepleb/xannyblastr

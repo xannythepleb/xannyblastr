@@ -424,7 +424,14 @@ function showNextWipe() {
 }
 
 function help() {
-  console.log(`blastr — admin CLI
+  console.log(`xannyblastr ${VERSION} — admin CLI
+
+    Enjoying running your own instance?
+    If it's helping your DMs reach their destination,
+    feel free to zap some sats over to xanny@cake.cash
+
+    Please report any bugs on GitHub:
+    https://github.com/xannythepleb/xannyblastr
 
 Manual blast relays (stored in the DB + relays.yml; changes apply live, no restart):
   blastr relays add <url>                  add a relay (updates DB and relays.yml)

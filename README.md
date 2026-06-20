@@ -68,7 +68,50 @@ When an authorized client publishes a gift wrap, the relay stores it, forwards i
 
 Each forward attempt is logged as a success or failure. **Success** means the relay both connected *and* received an explicit acceptance from the downstream relay — a relay that accepts the connection but rejects the write counts as a failure. Idle learned relays are also periodically probed for reachability.
 
-On a configurable schedule (default once per week), any *learned* relay that is unreachable or rejects writes at least half the time is removed. The health log is then wiped, so it never holds more than one retention window of data. Manually configured relays are considered permanent and are never auto-pruned.
+The relay no longer wipes the entire log once a week. Instead, it has been upgraded to dynamically manage the list of relays it remembers by using a basic algorithm to remove relays that have poor performance and retain ones that are good. You *can* still make it delete the logs periodically in the config, but there's no real reason to unless they get really huge after running it for 10 years or something.
+
+You can view live data on the best relays picked up by your instance like so:
+
+```bash
+docker compose exec blastr node src/cli.js relays best
+```
+
+The default is only 10, but you can also just run `blastr node src/cli.js relays best 100` (or, if you're using Docker Compose, `docker compose exec blastr node src/cli.js relays best 100`) if you want.
+
+Output looks like this:
+
+```bash
+┌─────────┬───────────────────────────────────────┬──────────────┬───────────┬──────────┬──────────┐
+│ (index) │ relay                                 │ success rate │ successes │ failures │ attempts │
+├─────────┼───────────────────────────────────────┼──────────────┼───────────┼──────────┼──────────┤
+│ 0       │ 'wss://asia.vectorapp.io/nostr'       │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 1       │ 'wss://bucket.coracle.social'         │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 2       │ 'wss://fanfares.nostr1.com'           │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 3       │ 'wss://freelay.sovbit.host'           │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 4       │ 'wss://haven.downisontheup.ca/chat'   │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 5       │ 'wss://inbox.azzamo.net'              │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 6       │ 'wss://jskitty.cat/nostr'             │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 7       │ 'wss://nip17.com'                     │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 8       │ 'wss://nostr-01.yakihonne.com'        │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 9       │ 'wss://nostr-pub.wellorder.net'       │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 10      │ 'wss://nostr-relay.derekross.me/chat' │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 11      │ 'wss://nostr.bitcoiner.social'        │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 12      │ 'wss://nostr.computingcache.com'      │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 13      │ 'wss://nostr.data.haus'               │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 14      │ 'wss://nostr.oxtr.dev'                │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 15      │ 'wss://nostrrelay.com'                │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 16      │ 'wss://offchain.pub'                  │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 17      │ 'wss://relay.agora.social'            │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 18      │ 'wss://relay.coinos.io'               │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 19      │ 'wss://relay.fountain.fm'             │ '100.0%'     │ 31        │ 0        │ 31       │
+│ 20      │ 'wss://relay.getsafebox.app'          │ '100.0%'     │ 31        │ 0        │ 31       │
+| [...  skipping to the end for space             |              |           |          |          |
+│ 99      │ 'wss://vitor.nostr1.com'              │ '45.2%'      │ 14        │ 17       │ 31       │
+└─────────┴───────────────────────────────────────┴──────────────┴───────────┴──────────┴──────────┘
+
+```
+
+This data is then used by xannyblastr to decide the relays to keep sending and receiving events to and from.
 
 ### The relay list: database plus YAML
 
@@ -166,6 +209,52 @@ This file is the source of truth for *manual* relays. Harvested (auto discovered
 
 The CLI handles configuration edits and health inspection. Run it directly with Node, via the `npm run cli` script, or inside the container with `docker compose exec blastr node src/cli.js`.
 
+Command reference:
+
+```bash
+blastr — admin CLI
+
+Manual blast relays (stored in the DB + relays.yml; changes apply live, no restart):
+  blastr relays add <url>                  add a relay (updates DB and relays.yml)
+  blastr relays remove <url>               remove a relay (updates DB and relays.yml)
+  blastr relays sync                       apply bulk edits made to relays.yml
+  blastr relays list                       all known relays (manual + learned)
+  blastr relays recent [n]                 most recently used + last result
+  blastr relays best  [n]                  highest success rate
+  blastr relays worst [n]                  lowest success rate
+  blastr relays rate                       success rate for every relay
+  blastr relays refresh [n]                run discovery + probe now, then show best [n] (default 5)
+
+Config (config.json settings; validated; restart relay to apply):
+  blastr config set <key> <value>          e.g. config set logRetention 14d
+                                                config set name My DM Relay
+                                                config set privateReads false
+  blastr config add discovery <url>        add a WoT discovery relay
+  blastr config remove discovery <url>     remove a WoT discovery relay
+  blastr config get <key>                  show one value
+  blastr config list                       show all values (secret key masked)
+  blastr config keys                       list editable settings + types
+  blastr config validate                   check the whole config is valid
+  blastr config set-raw <key> <json>       escape hatch for raw JSON
+
+  (config add relay <url> also works and is an alias for "relays add")
+
+Status:
+  blastr status                            summary incl. next log wipe
+  blastr next-wipe                         time until the log is wiped
+
+```
+
+For Docker Compose, simply add `docker compose exec blastr node src/cli.js` to the beginning of any command.
+
+For example:
+
+```bash
+docker compose exec blastr node src/cli.js blastr relays add
+```
+
+Yeah it's a lot just to run a command. Sorry. Working on making that more user friendly.
+
 ### Managing blast relays
 
 These changes are written to both the database and `relays.yml` and take effect on a running relay immediately — no restart.
@@ -182,6 +271,8 @@ blastr relays best [n]                         # highest success rate
 blastr relays worst [n]                        # lowest success rate
 blastr relays rate                             # success rate for every relay
 ```
+
+You can also bulk add relays by adding them to `config.yml` then running `blastr relays sync`.
 
 ### Editing configuration
 
