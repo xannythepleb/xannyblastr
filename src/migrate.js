@@ -8,14 +8,18 @@
 // Intended Compose usage:
 //   docker compose --profile migrate run --rm migrate-data
 //
-// This script is deliberately conservative:
-//   - it does not delete the old ./data directory
-//   - it refuses to copy over an existing non-empty /app/data directory
-//   - it copies everything from the legacy data directory, including SQLite
-//     sidecar files such as -wal and -shm
+// Behaviour:
+//   - if /app/data is empty, migration runs automatically
+//   - if /app/data already contains files, the user is asked to confirm overwrite
+//   -    (in case user restarts service before migration by accident, totally unlike me...)
+//   - if confirmed, existing /app/data contents are removed before copying
+//   - /app/legacy-data is mounted read-only and is never modified
+//   - SQLite sidecar files such as blastr.db-wal and blastr.db-shm are copied too
 
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 const fsp = fs.promises;
 
@@ -46,6 +50,7 @@ async function assertDirectory(targetPath, label) {
   try {
     stat = await fsp.stat(targetPath);
   } catch {
+    fail(`${label} does not exist: ${targetPath}`);
     return false;
   }
 
@@ -64,6 +69,63 @@ async function listUsefulEntries(directoryPath) {
   return entries.filter((entry) => entry !== ".DS_Store");
 }
 
+function assertSafeTargetPath(targetPath) {
+  const resolved = path.resolve(targetPath);
+
+  if (resolved === "/" || resolved.length < 5) {
+    fail(`Refusing to wipe unsafe target path: ${targetPath}`);
+    return false;
+  }
+
+  return true;
+}
+
+async function askForOverwriteConfirmation(targetEntries) {
+  log("Target data directory is not empty.");
+  log("Existing target entries:");
+
+  for (const entry of targetEntries) {
+    console.log(`  - ${entry}`);
+  }
+
+  console.log("");
+  log("This migration will DELETE the existing target data listed above.");
+  log("It will then copy the old legacy ./data contents into the Docker volume.");
+  log("The old legacy ./data directory will NOT be deleted or modified.");
+  console.log("");
+
+  const rl = readline.createInterface({ input, output });
+
+  try {
+    const answer = await rl.question(
+      'Type "overwrite" to continue, or anything else to cancel: '
+    );
+
+    return answer.trim().toLowerCase() === "overwrite";
+  } finally {
+    rl.close();
+  }
+}
+
+async function clearDirectoryContents(directoryPath) {
+  const entries = await fsp.readdir(directoryPath);
+
+  for (const entry of entries) {
+    if (entry === ".DS_Store") {
+      continue;
+    }
+
+    const targetPath = path.join(directoryPath, entry);
+
+    log(`Removing existing target entry: ${targetPath}`);
+
+    await fsp.rm(targetPath, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
 async function copyDirectoryContents(sourceDir, targetDir) {
   const entries = await listUsefulEntries(sourceDir);
 
@@ -71,18 +133,25 @@ async function copyDirectoryContents(sourceDir, targetDir) {
     const sourcePath = path.join(sourceDir, entry);
     const targetPath = path.join(targetDir, entry);
 
+    log(`Copying ${sourcePath} -> ${targetPath}`);
+
     await fsp.cp(sourcePath, targetPath, {
       recursive: true,
-      force: false,
-      errorOnExist: true,
+      force: true,
+      errorOnExist: false,
       preserveTimestamps: true,
     });
   }
 }
 
 async function main() {
+  log("Starting Docker data migration.");
   log(`Legacy data directory: ${LEGACY_DATA_DIR}`);
   log(`Target data directory: ${TARGET_DATA_DIR}`);
+
+  if (!assertSafeTargetPath(TARGET_DATA_DIR)) {
+    return;
+  }
 
   const legacyExists = await exists(LEGACY_DATA_DIR);
 
@@ -113,20 +182,22 @@ async function main() {
   const targetEntries = await listUsefulEntries(TARGET_DATA_DIR);
 
   if (targetEntries.length > 0) {
-    fail(
-      [
-        "Target data directory is not empty, so migration has been refused.",
-        "",
-        "This prevents accidentally overwriting an existing Docker volume database.",
-        "",
-        `Target path: ${TARGET_DATA_DIR}`,
-        `Existing entries: ${targetEntries.join(", ")}`,
-        "",
-        "If you intended to start fresh, do not run the migration.",
-        "If you intended to migrate old data, inspect the Docker volume first.",
-      ].join("\n")
-    );
-    return;
+    const confirmed = await askForOverwriteConfirmation(targetEntries);
+
+    if (!confirmed) {
+      log("Migration cancelled. No files were changed.");
+      return;
+    }
+
+    log("Overwrite confirmed.");
+    log("Clearing target data directory...");
+
+    try {
+      await clearDirectoryContents(TARGET_DATA_DIR);
+    } catch (error) {
+      fail(`Failed while clearing target data directory: ${error.message}`);
+      return;
+    }
   }
 
   log(`Found ${legacyEntries.length} legacy data entr${legacyEntries.length === 1 ? "y" : "ies"}.`);
