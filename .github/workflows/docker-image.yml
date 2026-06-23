@@ -91,6 +91,8 @@ jobs:
             org.opencontainers.image.title=xannyblastr
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
+          env:
+            DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -106,6 +108,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           provenance: true
           sbom: true
+          annotations: ${{ steps.meta.outputs.annotations }}
 
       - name: Scan pushed Docker image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
